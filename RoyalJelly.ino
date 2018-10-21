@@ -13,7 +13,7 @@ bool neighborLayout[6];
 byte resourceCollected = 0;
 byte resourcePip = 10;
 Timer resourceTimer;
-byte tickInterval = 1500;
+byte tickInterval = 100;
 bool isFull;
 
 ////COMMUNICATION VARIABLES
@@ -192,7 +192,49 @@ void flowerLoop() {
 
 void workerLoop() {
   if (isFull) {//EXPORT FUNCTIONS
-
+    FOREACH_FACE(f) {
+      if (isValueReceivedOnFaceExpired(f)) { //empty face
+        tradingSignals[f] = INERT;
+      } else {//an actual neighbor
+        byte neighborData = getLastValueReceivedOnFace(f);
+        byte tradeFace = 6;
+        switch (tradingSignals[f]) {
+          case INERT://look to see if my neighbor is someone I can offer my resource to
+            if (isTouching(BROOD)) {//if I'm touching a brood, always offer to that
+              if (getNeighborRole(neighborData) == BROOD) {
+                tradingSignals[f] = SUPPLY;
+              } else {//don't accidentally offer stuff to the wrong people
+                tradingSignals[f] = INERT;
+              }
+            } else {
+              if (getNeighborRole(neighborData) == WORKER) {
+                tradingSignals[f] = SUPPLY;
+              } else {//don't accidentally offer stuff to the wrong people
+                tradingSignals[f] = INERT;
+              }
+            }
+            break;
+          case SUPPLY://look for neighbors who have offered to take my resource. if I am trading elsewhere, don't do this
+            if (!isTrading) {//no trade signals out, so we can create one
+              if (getNeighborTradingSignal(neighborData) == DEMAND) {
+                tradingSignals[f] = TRADING;
+                isTrading = true;
+              }
+            }
+            break;
+          case TRADING://so now I look for my trading neighbor to go to TRADING, so I can complete the trade and go to INERT
+            if (getNeighborTradingSignal(neighborData) == TRADING) {//alright, a trade is happening
+              tradingSignals[f] = INERT;
+              resourceCollected = 0;
+              isFull = false;
+            } else if (getNeighborTradingSignal(neighborData) == INERT) {//huh, some sort of interruption
+              tradingSignals[f] = INERT;
+              isTrading = false;
+            }
+            break;
+        }
+      }
+    }
   } else {//IMPORT FUNCTIONS
     //so the first step is to figure out what my sides are currently signalling
     FOREACH_FACE(f) {
@@ -237,7 +279,91 @@ void workerLoop() {
 }
 
 void broodLoop() {
-
+  if (isFull) {//EXPORT FUNCTIONS
+    FOREACH_FACE(f) {
+      if (isValueReceivedOnFaceExpired(f)) { //empty face
+        tradingSignals[f] = INERT;
+      } else {//an actual neighbor
+        byte neighborData = getLastValueReceivedOnFace(f);
+        byte tradeFace = 6;
+        switch (tradingSignals[f]) {
+          case INERT://look to see if my neighbor is someone I can offer my resource to
+            if (isTouching(QUEEN)) {//if I'm touching a brood, always offer to that
+              if (getNeighborRole(neighborData) == QUEEN) {
+                tradingSignals[f] = SUPPLY;
+              } else {//don't accidentally offer stuff to the wrong people
+                tradingSignals[f] = INERT;
+              }
+            } else {
+              if (getNeighborRole(neighborData) == BROOD) {
+                tradingSignals[f] = SUPPLY;
+              } else {//don't accidentally offer stuff to the wrong people
+                tradingSignals[f] = INERT;
+              }
+            }
+            break;
+          case SUPPLY://look for neighbors who have offered to take my resource. if I am trading elsewhere, don't do this
+            if (!isTrading) {//no trade signals out, so we can create one
+              if (getNeighborTradingSignal(neighborData) == DEMAND) {
+                tradingSignals[f] = TRADING;
+                isTrading = true;
+              }
+            }
+            break;
+          case TRADING://so now I look for my trading neighbor to go to TRADING, so I can complete the trade and go to INERT
+            if (getNeighborTradingSignal(neighborData) == TRADING) {//alright, a trade is happening
+              tradingSignals[f] = INERT;
+              resourceCollected = 0;
+              isFull = false;
+            } else if (getNeighborTradingSignal(neighborData) == INERT) {//huh, some sort of interruption
+              tradingSignals[f] = INERT;
+              isTrading = false;
+            }
+            break;
+        }
+      }
+    }
+  } else {//IMPORT FUNCTIONS
+    //so the first step is to figure out what my sides are currently signalling
+    FOREACH_FACE(f) {
+      if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
+        tradingSignals[f] = INERT;
+      } else {//ok, so this face is occupied. Let's do some work
+        byte neighborData = getLastValueReceivedOnFace(f);
+        switch (tradingSignals[f]) {
+          case INERT:// Look for a neighbor who might cause me to go into DEMAND
+            //if I have a WORKER or BROOD neighbor in SUPPLY mode, we go to DEMAND
+            if (getNeighborTradingSignal(neighborData) == SUPPLY && (getNeighborRole(neighborData) == WORKER || getNeighborRole(neighborData) == BROOD)) {
+              tradingSignals[f] = DEMAND;
+            }
+            break;
+          case DEMAND:// Look for a neighbor who could send me back to INERT or into TRADING
+            //if I have demanded from a neighbor, and it has reacted, I react back
+            if (getNeighborTradingSignal(neighborData) == TRADING) {//ooh, a trade is offered
+              tradingSignals[f] = TRADING;
+            } else if (getNeighborTradingSignal(neighborData) == INERT) {//oh, they have gone inert. Bummer
+              tradingSignals[f] = INERT;
+            }
+            break;
+          case TRADING:// Look for a neighbor that will send me back to INERT and complete a trade
+            //if that neighbor has gone inert, then the trade is COMPLETE
+            if (getNeighborTradingSignal(neighborData) == INERT) {
+              tradingSignals[f] = INERT;
+              if (getNeighborRole(neighborData) == BROOD) {
+                resourceCollected = resourcePip * 6;
+              } else if (getNeighborRole(neighborData) == WORKER) {
+                resourceCollected += resourcePip;
+              }
+            }
+            //an now, assuming a trade has happened, we must check if we are full
+            if (resourceCollected >= resourcePip * 6) {
+              isFull = true;
+            }
+            break;
+        }
+      }//end found face
+    }//end face loop
+  }//end import functions
 }
 
 void queenLoop() {
