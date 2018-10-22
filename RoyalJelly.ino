@@ -4,7 +4,6 @@ ServicePortSerial sp;
 enum blinkRoles     {SKY,   FLOWER,   WORKER,   BROOD,  QUEEN};
 byte hueByRole[5] = {136,   78,       43,       22,     200};
 byte blinkRole = FLOWER;
-byte roleHold = FLOWER;
 
 byte blinkNeighbors;
 bool neighborLayout[6];
