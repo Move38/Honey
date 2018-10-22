@@ -3,8 +3,8 @@ ServicePortSerial sp;
 
 enum blinkRoles     {SKY,   FLOWER,   WORKER,   BROOD,  QUEEN};
 byte hueByRole[5] = {136,   78,       43,       22,     200};
-byte blinkRole = SKY;
-byte roleHold = SKY;
+byte blinkRole = FLOWER;
+byte roleHold = FLOWER;
 
 byte blinkNeighbors;
 bool neighborLayout[6];
@@ -13,7 +13,7 @@ bool neighborLayout[6];
 byte resourceCollected = 0;
 byte resourcePip = 10;
 Timer resourceTimer;
-byte tickInterval = 100;
+byte tickInterval = 50;
 bool isFull;
 
 ////COMMUNICATION VARIABLES
@@ -34,67 +34,25 @@ void setup() {
 }
 
 void loop() {
-  //determine neighbors
-  blinkNeighbors = 0;
-  FOREACH_FACE(f) {
-    if (!isValueReceivedOnFaceExpired(f)) {
-      blinkNeighbors++;
-      neighborLayout[f] = true;
-    } else {
-      neighborLayout[f] = false;
-    }
-  }
-
-  //determine if I'm trading (used elsewhere)
-  isTrading = false;
-  FOREACH_FACE(f) {
-    if (tradingSignals[f] == TRADING) {
-      isTrading = true;
-    }
-  }
-
-  //determine role
-  switch (blinkNeighbors) {
-    case 0:
-      blinkRole = SKY;
-      break;
-    case 1:
-      blinkRole = FLOWER;
-      break;
-    case 2:
-      blinkRole = WORKER;
-      break;
-    case 3://WORKER, unless I have contiguous neighbors
-      blinkRole = WORKER;
-      //do I have an occupied space with two occupied neighbors?
-      FOREACH_FACE(f) {
-        if (neighborLayout[f]) { //ok, something here
-          if (neighborLayout[nextClockwise(f)] && neighborLayout[nextCounterclockwise(f)]) { //both neighbors occupied
-            blinkRole = BROOD;
-          }
-        }
-      }
-      break;
-    case 4://BROOD, unless touching a flower
-      if (isTouching(FLOWER)) {
+  //change role?
+  if (buttonLongPressed()) {
+    switch (blinkRole) {
+      case FLOWER:
         blinkRole = WORKER;
-      } else {
+        break;
+      case WORKER:
         blinkRole = BROOD;
-      }
-      break;
-    case 5:
-      blinkRole = BROOD;
-      break;
-    case 6:
-      blinkRole = QUEEN;
-      break;
-  }
-
-  //did we change role?
-  if (blinkRole != roleHold) {//ooh, a different role
+        break;
+      case BROOD:
+        blinkRole = QUEEN;
+        break;
+      case QUEEN:
+        blinkRole = FLOWER;
+        break;
+    }
+    //reset all the resources and stuff
     resourceCollected = 0;
     isFull = false;
-    roleHold = blinkRole;
     FOREACH_FACE(f) {
       tradingSignals[f] = INERT;
     }
