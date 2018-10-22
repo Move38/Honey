@@ -1,8 +1,8 @@
 #include "Serial.h"
 ServicePortSerial sp;
 
-enum blinkRoles     {SKY,   FLOWER,   WORKER,   BROOD,  QUEEN};
-byte hueByRole[5] = {136,   78,       43,       22,     200};
+enum blinkRoles     {FLOWER,   WORKER,   BROOD,  QUEEN};
+byte hueByRole[5] = {78,       43,       22,     200};
 byte blinkRole = FLOWER;
 
 byte blinkNeighbors;
@@ -59,9 +59,6 @@ void loop() {
 
   //run loops
   switch (blinkRole) {
-    case SKY:
-      skyLoop();
-      break;
     case FLOWER:
       flowerLoop();
       break;
@@ -74,6 +71,14 @@ void loop() {
     case QUEEN:
       queenLoop();
       break;
+  }
+
+  isTrading = false;
+  //make sure isTrading is accurate
+  FOREACH_FACE(f) {
+    if (tradingSignals[f] == TRADING) {
+      isTrading = true;
+    }
   }
 
   //set up communication
@@ -324,7 +329,45 @@ void broodLoop() {
 }
 
 void queenLoop() {
-
+  if (!isFull) { //IMPORT FUNCTIONS
+    //so the first step is to figure out what my sides are currently signalling
+    FOREACH_FACE(f) {
+      if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
+        tradingSignals[f] = INERT;
+      } else {//ok, so this face is occupied. Let's do some work
+        byte neighborData = getLastValueReceivedOnFace(f);
+        switch (tradingSignals[f]) {
+          case INERT:// Look for a neighbor who might cause me to go into DEMAND
+            //if I have a WORKER or BROOD neighbor in SUPPLY mode, we go to DEMAND
+            if (getNeighborTradingSignal(neighborData) == SUPPLY && getNeighborRole(neighborData) == BROOD) {
+              tradingSignals[f] = DEMAND;
+            }
+            break;
+          case DEMAND:// Look for a neighbor who could send me back to INERT or into TRADING
+            //if I have demanded from a neighbor, and it has reacted, I react back
+            if (getNeighborTradingSignal(neighborData) == TRADING) {//ooh, a trade is offered
+              tradingSignals[f] = TRADING;
+            } else if (getNeighborTradingSignal(neighborData) == INERT) {//oh, they have gone inert. Bummer
+              tradingSignals[f] = INERT;
+            }
+            break;
+          case TRADING:// Look for a neighbor that will send me back to INERT and complete a trade
+            //if that neighbor has gone inert, then the trade is COMPLETE
+            if (getNeighborTradingSignal(neighborData) == INERT) {
+              tradingSignals[f] = INERT;
+              if (getNeighborRole(neighborData) == BROOD) {
+                resourceCollected += resourcePip;
+              }
+            }
+            //an now, assuming a trade has happened, we must check if we are full
+            if (resourceCollected >= resourcePip * 6) {
+              isFull = true;
+            }
+            break;
+        }
+      }//end found face
+    }//end face loop
+  }//end import functions
 }
 
 void autoResource() {
@@ -390,10 +433,10 @@ void hiveDisplay() {
         setColorOnFace(BLUE, f);
         break;
       case DEMAND:
-        setColorOnFace(ORANGE, f);
+        setColorOnFace(RED, f);
         break;
       case TRADING:
-        setColorOnFace(RED, f);
+        setColorOnFace(WHITE, f);
         break;
     }
   }
