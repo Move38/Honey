@@ -7,13 +7,15 @@ byte blinkRole = FLOWER;
 
 byte blinkNeighbors;
 bool neighborLayout[6];
+bool shouldEvolve = false;
 
 ////RESOURCE VARIABLES
 byte resourceCollected = 0;
 byte resourcePip = 10;
 Timer resourceTimer;
-byte tickInterval = 50;
+byte tickInterval = 200;
 bool isFull;
+bool isActive = false;;//QUEEN only variable
 
 ////COMMUNICATION VARIABLES
 enum signalTypes {INERT, SUPPLY, DEMAND, TRADING};
@@ -21,7 +23,7 @@ byte tradingSignals[6];
 bool isTrading = false;
 
 ////DISPLAY VARIABLES
-byte saturationReduction = 6;
+byte saturationReduction = 10;
 
 /////////
 //LOOPS//
@@ -33,8 +35,13 @@ void setup() {
 }
 
 void loop() {
-  //change role?
+  //change role when ready?
   if (buttonLongPressed()) {
+    shouldEvolve = true;
+  }
+
+  //time to change role (everyone but queen)?
+  if (isFull && shouldEvolve) {
     switch (blinkRole) {
       case FLOWER:
         blinkRole = WORKER;
@@ -45,13 +52,15 @@ void loop() {
       case BROOD:
         blinkRole = QUEEN;
         break;
-      case QUEEN:
+      case QUEEN://only occurs under special circumstances, check queenLoop for logic
         blinkRole = FLOWER;
         break;
     }
     //reset all the resources and stuff
     resourceCollected = 0;
     isFull = false;
+    shouldEvolve = false;
+    isActive = false;
     FOREACH_FACE(f) {
       tradingSignals[f] = INERT;
     }
@@ -61,15 +70,19 @@ void loop() {
   switch (blinkRole) {
     case FLOWER:
       flowerLoop();
+      hiveDisplay();
       break;
     case WORKER:
       workerLoop();
+      hiveDisplay();
       break;
     case BROOD:
       broodLoop();
+      hiveDisplay();
       break;
     case QUEEN:
       queenLoop();
+      queenDisplay();
       break;
   }
 
@@ -88,12 +101,6 @@ void loop() {
   }
 
   //do display
-  hiveDisplay();
-
-
-}
-
-void skyLoop() {
 
 }
 
@@ -329,45 +336,61 @@ void broodLoop() {
 }
 
 void queenLoop() {
-  if (!isFull) { //IMPORT FUNCTIONS
-    //so the first step is to figure out what my sides are currently signalling
-    FOREACH_FACE(f) {
-      if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
-        tradingSignals[f] = INERT;
-      } else {//ok, so this face is occupied. Let's do some work
-        byte neighborData = getLastValueReceivedOnFace(f);
-        switch (tradingSignals[f]) {
-          case INERT:// Look for a neighbor who might cause me to go into DEMAND
-            //if I have a WORKER or BROOD neighbor in SUPPLY mode, we go to DEMAND
-            if (getNeighborTradingSignal(neighborData) == SUPPLY && getNeighborRole(neighborData) == BROOD) {
-              tradingSignals[f] = DEMAND;
+  ///ACTIVATION LOGIC
+  if (isActive) {//we are currently active. Constantly lose health
+    autoDamage();
+    if (resourceCollected == 0) {
+      isActive = false;
+    }
+  } else {//we are inactive. Wait until we have full resources, then go active
+    if (resourceCollected == resourcePip * 6) {
+      isActive = true;
+    }
+  }
+
+  ////IMPORT FUNCTIONS
+  //so the first step is to figure out what my sides are currently signalling
+  FOREACH_FACE(f) {
+    if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
+      tradingSignals[f] = INERT;
+    } else {//ok, so this face is occupied. Let's do some work
+      byte neighborData = getLastValueReceivedOnFace(f);
+      switch (tradingSignals[f]) {
+        case INERT:// Look for a neighbor who might cause me to go into DEMAND
+          //if I have a WORKER or BROOD neighbor in SUPPLY mode, we go to DEMAND
+          if (getNeighborTradingSignal(neighborData) == SUPPLY && getNeighborRole(neighborData) == BROOD) {
+            tradingSignals[f] = DEMAND;
+          }
+          break;
+        case DEMAND:// Look for a neighbor who could send me back to INERT or into TRADING
+          //if I have demanded from a neighbor, and it has reacted, I react back
+          if (getNeighborTradingSignal(neighborData) == TRADING) {//ooh, a trade is offered
+            tradingSignals[f] = TRADING;
+          } else if (getNeighborTradingSignal(neighborData) == INERT) {//oh, they have gone inert. Bummer
+            tradingSignals[f] = INERT;
+          }
+          break;
+        case TRADING:// Look for a neighbor that will send me back to INERT and complete a trade
+          //if that neighbor has gone inert, then the trade is COMPLETE
+          if (getNeighborTradingSignal(neighborData) == INERT) {
+            tradingSignals[f] = INERT;
+            if (getNeighborRole(neighborData) == BROOD) {
+              resourceCollected += resourcePip;
             }
-            break;
-          case DEMAND:// Look for a neighbor who could send me back to INERT or into TRADING
-            //if I have demanded from a neighbor, and it has reacted, I react back
-            if (getNeighborTradingSignal(neighborData) == TRADING) {//ooh, a trade is offered
-              tradingSignals[f] = TRADING;
-            } else if (getNeighborTradingSignal(neighborData) == INERT) {//oh, they have gone inert. Bummer
-              tradingSignals[f] = INERT;
-            }
-            break;
-          case TRADING:// Look for a neighbor that will send me back to INERT and complete a trade
-            //if that neighbor has gone inert, then the trade is COMPLETE
-            if (getNeighborTradingSignal(neighborData) == INERT) {
-              tradingSignals[f] = INERT;
-              if (getNeighborRole(neighborData) == BROOD) {
-                resourceCollected += resourcePip;
-              }
-            }
-            //an now, assuming a trade has happened, we must check if we are full
-            if (resourceCollected >= resourcePip * 6) {
-              isFull = true;
-            }
-            break;
-        }
-      }//end found face
-    }//end face loop
-  }//end import functions
+          }
+          //an now, assuming a trade has happened, we must cap the amount of resource we can even have
+          if (resourceCollected > resourcePip * 6) {
+            resourceCollected = resourcePip * 6;
+          }
+          break;
+      }
+    }//end found face
+  }//end face loop
+
+  ////EVOLVE FUNCTION
+  if (shouldEvolve) {
+    isFull = true;//this allows evolution to happen next frame
+  }
 }
 
 void autoResource() {
@@ -380,6 +403,20 @@ void autoResource() {
     //mark as full if needed
     if (resourceCollected >= resourcePip * 6) {
       isFull = true;
+    }
+    //reset the timer
+    resourceTimer.set(tickInterval);
+  }
+}
+
+void autoDamage() {
+  if (resourceTimer.isExpired()) {
+    //tick the resource
+    resourceCollected--;
+
+    //mark as inactive if needed
+    if (resourceCollected == 0) {
+      isActive = false;
     }
     //reset the timer
     resourceTimer.set(tickInterval);
@@ -412,9 +449,9 @@ byte getNeighborTradingSignal(byte data) {
 
 void hiveDisplay() {
   byte fullFaces = resourceCollected / resourcePip;//returns 0-6
-
   byte displayHue = hueByRole[blinkRole];
   byte displaySaturation = 0;
+
   FOREACH_FACE(f) {
     if (f < fullFaces) {//this face is definitely full
       displaySaturation = 255 - (resourcePip * saturationReduction);
@@ -438,6 +475,38 @@ void hiveDisplay() {
       case TRADING:
         setColorOnFace(WHITE, f);
         break;
+    }
+  }
+}
+
+void queenDisplay() {
+  byte fullFaces = resourceCollected / resourcePip;//returns 0-6
+  byte displayHue = hueByRole[blinkRole];
+  byte displayBrightness = 0;
+
+  if (isActive) {
+    FOREACH_FACE(f) {
+      if (f < fullFaces) {//this face is definitely full
+        displayBrightness = 255;
+      } else if (f == fullFaces) {//this is the one being worked on now
+        displayBrightness = 255 - ((resourceCollected % resourcePip) * saturationReduction);
+      } else {//this is empty
+        displayBrightness = 255 - (resourcePip * saturationReduction);
+      }
+
+      setColorOnFace(makeColorHSB(displayHue, 255, displayBrightness), f);
+    }
+  } else {
+    FOREACH_FACE(f) {
+      if (f < fullFaces) {//this face is definitely full
+        displayBrightness = 25 + (resourcePip * saturationReduction);
+      } else if (f == fullFaces) {//this is the one being worked on now
+        displayBrightness = 25 + ((resourceCollected % resourcePip) * saturationReduction);
+      } else {//this is empty
+        displayBrightness = 25;
+      }
+
+      setColorOnFace(makeColorHSB(displayHue, 255, displayBrightness), f);
     }
   }
 }
