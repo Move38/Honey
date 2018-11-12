@@ -46,6 +46,7 @@ byte saturationTarget = 210;
 byte spinPosition = 0;
 Timer spinTimer;
 #define SPIN_INTERVAL 300
+bool spinClockwise = true;
 
 /////////
 //LOOPS//
@@ -308,8 +309,21 @@ byte getNeighborCelebrationState(byte data) {
 
 void hiveDisplay() {
   if (spinTimer.isExpired()) {
-    spinPosition = (spinPosition + 1) % 6;
-    spinTimer.set(SPIN_INTERVAL);
+    //the time has ended. Increment position
+    if (spinClockwise) {
+      spinPosition = (spinPosition + 1) % 6;
+    }
+
+    //should I sit for a second and think about life?
+    if (rand(8) == 0) {
+      spinTimer.set(SPIN_INTERVAL * 4);
+      //so now that I'm sitting here, should I change my direction?
+      if (rand(1) == 0) {
+        spinClockwise = !spinClockwise;
+      }
+    } else {
+      spinTimer.set(SPIN_INTERVAL);
+    }
   }
 
   byte displayHue = hueByRole[blinkRole];
@@ -346,14 +360,17 @@ void hiveDisplay() {
           displaySaturation = 255;
         }
 
-        //before we set the color, we need to check if this is the 6th face and if we are going to evolve
-        if (shouldEvolve) {
-          if (f == 5) {
-            displayHue = hueByRole[blinkRole + 1];
-          }
-        }
-        setColorOnFace(makeColorHSB(displayHue, displaySaturation, 255), (f + spinPosition) % 6);
+        setColorOnFace(makeColorHSB(displayHue, displaySaturation, 255), f);
       }
+
+      //now that we have displayed resources, display the little bee
+      Color beeColor;
+      if (shouldEvolve) {
+        beeColor = makeColorHSB(hueByRole[blinkRole + 1], 255, 255);
+      } else {
+        beeColor = makeColorHSB(hueByRole[blinkRole], targetSaturation, 255);
+      }
+      setColorOnFace(beeColor, spinPosition);
     }
   }
 }
