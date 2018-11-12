@@ -11,11 +11,16 @@ bool shouldEvolve = false;
 
 ////RESOURCE VARIABLES
 byte resourceCollected = 0;
-byte resourcePip = 10;
+#define RESOURCE_STACK 10
 Timer resourceTimer;
-byte tickInterval = 200;
+#define RESOURCE_TICK_INTERVAL 200
 bool isFull;
+bool isLagging;
+Timer lagTimer;
+#define RESOURCE_FULL_LAG 1000
+
 bool isActive = false;;//QUEEN only variable
+
 
 ////COMMUNICATION VARIABLES
 enum signalTypes {INERT, SUPPLY, DEMAND, TRADING};
@@ -66,6 +71,11 @@ void loop() {
     }
   }
 
+  //if we're full, are we done lagging?
+  if (lagTimer.isExpired()) {
+    isLagging = false;
+  }
+
   //run loops
   switch (blinkRole) {
     case FLOWER:
@@ -94,6 +104,8 @@ void loop() {
     }
   }
 
+
+
   //set up communication
   FOREACH_FACE(f) {
     byte sendData = (blinkRole << 4) + (tradingSignals[f] << 2);
@@ -105,55 +117,25 @@ void loop() {
 }
 
 void flowerLoop() {
-  //should we use autoResource?
-  if (isTouching(WORKER)) {
-    autoResource();
-  }
 
-  //have we been clicked?
-  if (buttonPressed()) {
-    resourceCollected++;
-    if (resourceCollected == resourcePip * 6) {
-      isFull = true;
-      resourceCollected = resourcePip * 6;
-    }
-  }
 
   //EXPORT FUNCTIONS
-  if (isFull) {
-    FOREACH_FACE(f) {
-      if (isValueReceivedOnFaceExpired(f)) { //empty face
-        tradingSignals[f] = INERT;
-      } else {//an actual neighbor
-        byte neighborData = getLastValueReceivedOnFace(f);
-        byte tradeFace = 6;
-        switch (tradingSignals[f]) {
-          case INERT://look to see if my neighbor is someone I can offer my resource to
-            if (getNeighborRole(neighborData) == WORKER) {
-              tradingSignals[f] = SUPPLY;
-            } else {//don't accidentally offer stuff to the wrong people
-              tradingSignals[f] = INERT;
-            }
-            break;
-          case SUPPLY://look for neighbors who have offered to take my resource. if I am trading elsewhere, don't do this
-            if (!isTrading) {//no trade signals out, so we can create one
-              if (getNeighborTradingSignal(neighborData) == DEMAND) {
-                tradingSignals[f] = TRADING;
-                isTrading = true;
-              }
-            }
-            break;
-          case TRADING://so now I look for my trading neighbor to go to TRADING, so I can complete the trade and go to INERT
-            if (getNeighborTradingSignal(neighborData) == TRADING) {//alright, a trade is happening
-              tradingSignals[f] = INERT;
-              resourceCollected = 0;
-              isFull = false;
-            } else if (getNeighborTradingSignal(neighborData) == INERT) {//huh, some sort of interruption
-              tradingSignals[f] = INERT;
-              isTrading = false;
-            }
-            break;
-        }
+  if (isFull) {//EXPORT FUNCTIONS
+    genericExportLoop(WORKER, WORKER);//export to WORKER blinks
+  } else {
+    //should we use autoResource?
+    if (isTouching(WORKER)) {
+      autoResource();
+    }
+
+    //have we been clicked?
+    if (buttonPressed()) {
+      resourceCollected++;
+      if (resourceCollected == RESOURCE_STACK * 6) {
+        isFull = true;
+        isLagging = true;
+        lagTimer.set(RESOURCE_FULL_LAG);
+        resourceCollected = RESOURCE_STACK * 6;
       }
     }
   }
@@ -161,178 +143,116 @@ void flowerLoop() {
 
 void workerLoop() {
   if (isFull) {//EXPORT FUNCTIONS
-    FOREACH_FACE(f) {
-      if (isValueReceivedOnFaceExpired(f)) { //empty face
-        tradingSignals[f] = INERT;
-      } else {//an actual neighbor
-        byte neighborData = getLastValueReceivedOnFace(f);
-        byte tradeFace = 6;
-        switch (tradingSignals[f]) {
-          case INERT://look to see if my neighbor is someone I can offer my resource to
-            if (isTouching(BROOD)) {//if I'm touching a brood, always offer to that
-              if (getNeighborRole(neighborData) == BROOD) {
-                tradingSignals[f] = SUPPLY;
-              } else {//don't accidentally offer stuff to the wrong people
-                tradingSignals[f] = INERT;
-              }
-            } else {
-              if (getNeighborRole(neighborData) == WORKER) {
-                tradingSignals[f] = SUPPLY;
-              } else {//don't accidentally offer stuff to the wrong people
-                tradingSignals[f] = INERT;
-              }
-            }
-            break;
-          case SUPPLY://look for neighbors who have offered to take my resource. if I am trading elsewhere, don't do this
-            if (!isTrading) {//no trade signals out, so we can create one
-              if (getNeighborTradingSignal(neighborData) == DEMAND) {
-                tradingSignals[f] = TRADING;
-                isTrading = true;
-              }
-            }
-            break;
-          case TRADING://so now I look for my trading neighbor to go to TRADING, so I can complete the trade and go to INERT
-            if (getNeighborTradingSignal(neighborData) == TRADING) {//alright, a trade is happening
-              tradingSignals[f] = INERT;
-              resourceCollected = 0;
-              isFull = false;
-            } else if (getNeighborTradingSignal(neighborData) == INERT) {//huh, some sort of interruption
-              tradingSignals[f] = INERT;
-              isTrading = false;
-            }
-            break;
-        }
-      }
-    }
+    genericExportLoop(BROOD, WORKER);//export to BROOD blinks, or other WORKER blinks if you must
   } else {//IMPORT FUNCTIONS
-    //so the first step is to figure out what my sides are currently signalling
-    FOREACH_FACE(f) {
-      if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
-        tradingSignals[f] = INERT;
-      } else {//ok, so this face is occupied. Let's do some work
-        byte neighborData = getLastValueReceivedOnFace(f);
-        switch (tradingSignals[f]) {
-          case INERT:// Look for a neighbor who might cause me to go into DEMAND
-            //if I have a WORKER or FLOWER neighbor in SUPPLY mode, we go to DEMAND
-            if (getNeighborTradingSignal(neighborData) == SUPPLY && (getNeighborRole(neighborData) == WORKER || getNeighborRole(neighborData) == FLOWER)) {
-              tradingSignals[f] = DEMAND;
-            }
-            break;
-          case DEMAND:// Look for a neighbor who could send me back to INERT or into TRADING
-            //if I have demanded from a neighbor, and it has reacted, I react back
-            if (getNeighborTradingSignal(neighborData) == TRADING) {//ooh, a trade is offered
-              tradingSignals[f] = TRADING;
-            } else if (getNeighborTradingSignal(neighborData) == INERT) {//oh, they have gone inert. Bummer
-              tradingSignals[f] = INERT;
-            }
-            break;
-          case TRADING:// Look for a neighbor that will send me back to INERT and complete a trade
-            //if that neighbor has gone inert, then the trade is COMPLETE
-            if (getNeighborTradingSignal(neighborData) == INERT) {
-              tradingSignals[f] = INERT;
-              if (getNeighborRole(neighborData) == WORKER) {
-                resourceCollected = resourcePip * 6;
-              } else if (getNeighborRole(neighborData) == FLOWER) {
-                resourceCollected += resourcePip;
-              }
-            }
-            //an now, assuming a trade has happened, we must check if we are full
-            if (resourceCollected >= resourcePip * 6) {
-              isFull = true;
-            }
-            break;
-        }
-      }//end found face
-    }//end face loop
-  }//end import functions
+    genericImportLoop(FLOWER, WORKER);//import from FLOWER blinks and other WORKER blinks
+    //now that we've potentially imported, do a fullness check
+    if (resourceCollected >= RESOURCE_STACK * 6) {
+      isFull = true;
+      isLagging = true;
+      lagTimer.set(RESOURCE_FULL_LAG);
+      resourceCollected = RESOURCE_STACK * 6;
+    }
+  }
 }
 
 void broodLoop() {
   if (isFull) {//EXPORT FUNCTIONS
-    FOREACH_FACE(f) {
-      if (isValueReceivedOnFaceExpired(f)) { //empty face
-        tradingSignals[f] = INERT;
-      } else {//an actual neighbor
-        byte neighborData = getLastValueReceivedOnFace(f);
-        byte tradeFace = 6;
-        switch (tradingSignals[f]) {
-          case INERT://look to see if my neighbor is someone I can offer my resource to
-            if (isTouching(QUEEN)) {//if I'm touching a brood, always offer to that
-              if (getNeighborRole(neighborData) == QUEEN) {
-                tradingSignals[f] = SUPPLY;
-              } else {//don't accidentally offer stuff to the wrong people
-                tradingSignals[f] = INERT;
-              }
-            } else {
-              if (getNeighborRole(neighborData) == BROOD) {
-                tradingSignals[f] = SUPPLY;
-              } else {//don't accidentally offer stuff to the wrong people
-                tradingSignals[f] = INERT;
-              }
-            }
-            break;
-          case SUPPLY://look for neighbors who have offered to take my resource. if I am trading elsewhere, don't do this
-            if (!isTrading) {//no trade signals out, so we can create one
-              if (getNeighborTradingSignal(neighborData) == DEMAND) {
-                tradingSignals[f] = TRADING;
-                isTrading = true;
-              }
-            }
-            break;
-          case TRADING://so now I look for my trading neighbor to go to TRADING, so I can complete the trade and go to INERT
-            if (getNeighborTradingSignal(neighborData) == TRADING) {//alright, a trade is happening
+    genericExportLoop(QUEEN, BROOD);//export to QUEEN blinks, or other BROOD blinks if you must
+  } else {//IMPORT FUNCTIONS
+    genericImportLoop(WORKER, BROOD);//import from WORKER blinks and other BROOD blinks
+    //now that we've potentially imported, do a fullness check
+    if (resourceCollected >= RESOURCE_STACK * 6) {
+      isFull = true;
+      isLagging = true;
+      lagTimer.set(RESOURCE_FULL_LAG);
+      resourceCollected = RESOURCE_STACK * 6;
+    }
+  }
+}
+
+void genericExportLoop(byte primaryExportRole, byte secondaryExportRole) {
+  FOREACH_FACE(f) {
+    if (isValueReceivedOnFaceExpired(f)) { //empty face
+      tradingSignals[f] = INERT;
+    } else {//an actual neighbor
+      byte neighborData = getLastValueReceivedOnFace(f);
+      byte tradeFace = 6;
+      switch (tradingSignals[f]) {
+        case INERT://look to see if my neighbor is someone I can offer my resource to
+          if (isTouching(primaryExportRole)) {//if I'm touching a my primary export type, always offer to that
+            if (getNeighborRole(neighborData) == primaryExportRole) {
+              tradingSignals[f] = SUPPLY;
+            } else {//don't accidentally offer stuff to the wrong people
               tradingSignals[f] = INERT;
-              resourceCollected = 0;
-              isFull = false;
-            } else if (getNeighborTradingSignal(neighborData) == INERT) {//huh, some sort of interruption
-              tradingSignals[f] = INERT;
-              isTrading = false;
             }
-            break;
-        }
+          } else {
+            if (getNeighborRole(neighborData) == secondaryExportRole) {
+              tradingSignals[f] = SUPPLY;
+            } else {//don't accidentally offer stuff to the wrong people
+              tradingSignals[f] = INERT;
+            }
+          }
+          break;
+        case SUPPLY://look for neighbors who have offered to take my resource. if I am trading elsewhere, don't do this
+          if (!isTrading) {//no trade signals out, so we can create one
+            if (getNeighborTradingSignal(neighborData) == DEMAND) {
+              tradingSignals[f] = TRADING;
+              isTrading = true;
+            }
+          }
+          break;
+        case TRADING://so now I look for my trading neighbor to go to TRADING, so I can complete the trade and go to INERT
+          if (getNeighborTradingSignal(neighborData) == TRADING) {//alright, a trade is happening
+            tradingSignals[f] = INERT;
+            resourceCollected = 0;
+            isFull = false;
+          } else if (getNeighborTradingSignal(neighborData) == INERT) {//huh, some sort of interruption
+            tradingSignals[f] = INERT;
+            isTrading = false;
+          }
+          break;
       }
     }
-  } else {//IMPORT FUNCTIONS
-    //so the first step is to figure out what my sides are currently signalling
-    FOREACH_FACE(f) {
-      if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
-        tradingSignals[f] = INERT;
-      } else {//ok, so this face is occupied. Let's do some work
-        byte neighborData = getLastValueReceivedOnFace(f);
-        switch (tradingSignals[f]) {
-          case INERT:// Look for a neighbor who might cause me to go into DEMAND
-            //if I have a WORKER or BROOD neighbor in SUPPLY mode, we go to DEMAND
-            if (getNeighborTradingSignal(neighborData) == SUPPLY && (getNeighborRole(neighborData) == WORKER || getNeighborRole(neighborData) == BROOD)) {
-              tradingSignals[f] = DEMAND;
+  }
+}
+
+void genericImportLoop(byte singleStackImportRole, byte fullResourceImportRole) {
+  //so the first step is to figure out what my sides are currently signalling
+  FOREACH_FACE(f) {
+    if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
+      tradingSignals[f] = INERT;
+    } else {//ok, so this face is occupied. Let's do some work
+      byte neighborData = getLastValueReceivedOnFace(f);
+      switch (tradingSignals[f]) {
+        case INERT:// Look for a neighbor who might cause me to go into DEMAND
+          //if I have a compatible neighbor in SUPPLY mode, we go to DEMAND
+          if (getNeighborTradingSignal(neighborData) == SUPPLY && (getNeighborRole(neighborData) == singleStackImportRole || getNeighborRole(neighborData) == fullResourceImportRole)) {
+            tradingSignals[f] = DEMAND;
+          }
+          break;
+        case DEMAND:// Look for a neighbor who could send me back to INERT or into TRADING
+          //if I have demanded from a neighbor, and it has reacted, I react back
+          if (getNeighborTradingSignal(neighborData) == TRADING) {//ooh, a trade is offered
+            tradingSignals[f] = TRADING;
+          } else if (getNeighborTradingSignal(neighborData) == INERT) {//oh, they have gone inert. Bummer
+            tradingSignals[f] = INERT;
+          }
+          break;
+        case TRADING:// Look for a neighbor that will send me back to INERT and complete a trade
+          //if that neighbor has gone inert, then the trade is COMPLETE
+          if (getNeighborTradingSignal(neighborData) == INERT) {
+            tradingSignals[f] = INERT;
+            if (getNeighborRole(neighborData) == fullResourceImportRole) {
+              resourceCollected = RESOURCE_STACK * 6;
+            } else if (getNeighborRole(neighborData) == singleStackImportRole) {
+              resourceCollected += RESOURCE_STACK;
             }
-            break;
-          case DEMAND:// Look for a neighbor who could send me back to INERT or into TRADING
-            //if I have demanded from a neighbor, and it has reacted, I react back
-            if (getNeighborTradingSignal(neighborData) == TRADING) {//ooh, a trade is offered
-              tradingSignals[f] = TRADING;
-            } else if (getNeighborTradingSignal(neighborData) == INERT) {//oh, they have gone inert. Bummer
-              tradingSignals[f] = INERT;
-            }
-            break;
-          case TRADING:// Look for a neighbor that will send me back to INERT and complete a trade
-            //if that neighbor has gone inert, then the trade is COMPLETE
-            if (getNeighborTradingSignal(neighborData) == INERT) {
-              tradingSignals[f] = INERT;
-              if (getNeighborRole(neighborData) == BROOD) {
-                resourceCollected = resourcePip * 6;
-              } else if (getNeighborRole(neighborData) == WORKER) {
-                resourceCollected += resourcePip;
-              }
-            }
-            //an now, assuming a trade has happened, we must check if we are full
-            if (resourceCollected >= resourcePip * 6) {
-              isFull = true;
-            }
-            break;
-        }
-      }//end found face
-    }//end face loop
-  }//end import functions
+          }
+          break;
+      }
+    }//end found face
+  }//end face loop
 }
 
 void queenLoop() {
@@ -343,7 +263,7 @@ void queenLoop() {
       isActive = false;
     }
   } else {//we are inactive. Wait until we have full resources, then go active
-    if (resourceCollected == resourcePip * 6) {
+    if (resourceCollected == RESOURCE_STACK * 6) {
       isActive = true;
     }
   }
@@ -375,12 +295,12 @@ void queenLoop() {
           if (getNeighborTradingSignal(neighborData) == INERT) {
             tradingSignals[f] = INERT;
             if (getNeighborRole(neighborData) == BROOD) {
-              resourceCollected += resourcePip;
+              resourceCollected += RESOURCE_STACK;
             }
           }
           //an now, assuming a trade has happened, we must cap the amount of resource we can even have
-          if (resourceCollected > resourcePip * 6) {
-            resourceCollected = resourcePip * 6;
+          if (resourceCollected > RESOURCE_STACK * 6) {
+            resourceCollected = RESOURCE_STACK * 6;
           }
           break;
       }
@@ -396,16 +316,16 @@ void queenLoop() {
 void autoResource() {
   if (resourceTimer.isExpired()) {
     //tick the resource if needed
-    if (resourceCollected < resourcePip * 6) {
+    if (resourceCollected < RESOURCE_STACK * 6) {
       isFull = false;
       resourceCollected++;
     }
     //mark as full if needed
-    if (resourceCollected >= resourcePip * 6) {
+    if (resourceCollected >= RESOURCE_STACK * 6) {
       isFull = true;
     }
     //reset the timer
-    resourceTimer.set(tickInterval);
+    resourceTimer.set(RESOURCE_TICK_INTERVAL);
   }
 }
 
@@ -419,7 +339,7 @@ void autoDamage() {
       isActive = false;
     }
     //reset the timer
-    resourceTimer.set(tickInterval);
+    resourceTimer.set(RESOURCE_TICK_INTERVAL);
   }
 }
 
@@ -448,15 +368,15 @@ byte getNeighborTradingSignal(byte data) {
 ///////////
 
 void hiveDisplay() {
-  byte fullFaces = resourceCollected / resourcePip;//returns 0-6
+  byte fullFaces = resourceCollected / RESOURCE_STACK;//returns 0-6
   byte displayHue = hueByRole[blinkRole];
   byte displaySaturation = 0;
 
   FOREACH_FACE(f) {
     if (f < fullFaces) {//this face is definitely full
-      displaySaturation = 255 - (resourcePip * saturationReduction);
+      displaySaturation = 255 - (RESOURCE_STACK * saturationReduction);
     } else if (f == fullFaces) {//this is the one being worked on now
-      displaySaturation = 255 - ((resourceCollected % resourcePip) * saturationReduction);
+      displaySaturation = 255 - ((resourceCollected % RESOURCE_STACK) * saturationReduction);
     } else {//this is empty
       displaySaturation = 255;
     }
@@ -480,7 +400,7 @@ void hiveDisplay() {
 }
 
 void queenDisplay() {
-  byte fullFaces = resourceCollected / resourcePip;//returns 0-6
+  byte fullFaces = resourceCollected / RESOURCE_STACK;//returns 0-6
   byte displayHue = hueByRole[blinkRole];
   byte displayBrightness = 0;
 
@@ -489,9 +409,9 @@ void queenDisplay() {
       if (f < fullFaces) {//this face is definitely full
         displayBrightness = 255;
       } else if (f == fullFaces) {//this is the one being worked on now
-        displayBrightness = 255 - ((resourceCollected % resourcePip) * saturationReduction);
+        displayBrightness = 255 - ((resourceCollected % RESOURCE_STACK) * saturationReduction);
       } else {//this is empty
-        displayBrightness = 255 - (resourcePip * saturationReduction);
+        displayBrightness = 255 - (RESOURCE_STACK * saturationReduction);
       }
 
       setColorOnFace(makeColorHSB(displayHue, 255, displayBrightness), f);
@@ -499,9 +419,9 @@ void queenDisplay() {
   } else {
     FOREACH_FACE(f) {
       if (f < fullFaces) {//this face is definitely full
-        displayBrightness = 25 + (resourcePip * saturationReduction);
+        displayBrightness = 25 + (RESOURCE_STACK * saturationReduction);
       } else if (f == fullFaces) {//this is the one being worked on now
-        displayBrightness = 25 + ((resourceCollected % resourcePip) * saturationReduction);
+        displayBrightness = 25 + ((resourceCollected % RESOURCE_STACK) * saturationReduction);
       } else {//this is empty
         displayBrightness = 25;
       }
