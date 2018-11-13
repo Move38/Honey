@@ -41,12 +41,18 @@ byte celebrationState = NOMINAL;
 ////DISPLAY VARIABLES
 byte hueByRole[5] = {78,       43,       22,     200};
 byte saturationReduction = 10;
-byte saturationTarget = 210;
+#define BEE_SATURATION 210
+#define RESOURCE_DIM 50
 
 byte spinPosition = 0;
+byte spinSteps = 7;
 Timer spinTimer;
-#define SPIN_INTERVAL 300
+#define SPIN_INTERVAL 200
 bool spinClockwise = true;
+
+bool isCelebrating = false;
+Timer celebrationTimer;
+#define CELEBRATION_INTERVAL 4000
 
 /////////
 //LOOPS//
@@ -79,29 +85,67 @@ void loop() {
   switch (blinkRole) {
     case FLOWER:
       flowerLoop();
-      hiveDisplay();
       break;
     case WORKER:
       workerLoop();
-      hiveDisplay();
       break;
     case BROOD:
       broodLoop();
-      hiveDisplay();
       break;
     case QUEEN:
       queenLoop();
-      queenDisplay();
       break;
   }
 
+  //DEBUG CELEBRATION
+  if (buttonDoubleClicked()) {
+    isCelebrating = true;
+    celebrationTimer.set(CELEBRATION_INTERVAL);
+    celebrationState = HOORAY;
+  }
+
   //resolve celebration state
+  if (celebrationState == NOMINAL) {
+    FOREACH_FACE(f) {
+      if (!isValueReceivedOnFaceExpired(f)) {//neighbor!
+        if (getNeighborCelebrationState(getLastValueReceivedOnFace(f)) == HOORAY) {//hooray is being propogated
+          isCelebrating = true;
+          celebrationTimer.set(CELEBRATION_INTERVAL);
+          celebrationState = HOORAY;
+        }
+      }
+    }
+  } else if (celebrationState == HOORAY) {
+    celebrationState = RESOLVING;//default to this, then change below if we find a NOMINAL
+    FOREACH_FACE(f) {
+      if (!isValueReceivedOnFaceExpired(f)) {//neighbor!
+        if (getNeighborCelebrationState(getLastValueReceivedOnFace(f)) == NOMINAL) {//this neighbor still needs to celebrate
+          celebrationState = HOORAY;
+        }
+      }
+    }
+  } else if (celebrationState == RESOLVING) {
+    celebrationState = NOMINAL;
+    FOREACH_FACE(f) {
+      if (!isValueReceivedOnFaceExpired(f)) {//neighbor!
+        if (getNeighborCelebrationState(getLastValueReceivedOnFace(f)) == HOORAY) {//this neighbor still needs to resolve
+          celebrationState = RESOLVING;
+        }
+      }
+    }
+  }
+
+  if (celebrationTimer.isExpired()) {
+    isCelebrating = false;
+  }
 
   //set up communication
   FOREACH_FACE(f) {
     byte sendData = (blinkRole << 4) + (tradingSignals[f] << 2) + (celebrationState);
     setValueSentOnFace(sendData, f);
   }
+
+  hiveDisplay();
 }
 
 void flowerLoop() {
@@ -149,8 +193,26 @@ void broodLoop() {
 }
 
 void queenLoop() {
+  //first, deal with the tricky business of evolving
+  if (isAlone()) {
+    if (shouldEvolve) {
+      blinkRole = FLOWER;
+      resourceCollected = 0;
+      isFull = false;
+      isLagging = false;
+      evolveTimer.set(1000);
+      shouldEvolve = false;
+    }
+  }
+  shouldEvolve = false;
+
   if (isFull) {
-    //special stuff
+    //The first time we run this loop, we become not full immediately
+    isCelebrating = true;
+    celebrationTimer.set(CELEBRATION_INTERVAL);
+    celebrationState = HOORAY;
+    isFull = false;
+    resourceCollected = 0;
   } else {
     incompleteLoop(BROOD, QUEEN);
   }
@@ -308,23 +370,6 @@ byte getNeighborCelebrationState(byte data) {
 ///////////
 
 void hiveDisplay() {
-  if (spinTimer.isExpired()) {
-    //the time has ended. Increment position
-    if (spinClockwise) {
-      spinPosition = (spinPosition + 1) % 6;
-    }
-
-    //should I sit for a second and think about life?
-    if (rand(8) == 0) {
-      spinTimer.set(SPIN_INTERVAL * 4);
-      //so now that I'm sitting here, should I change my direction?
-      if (rand(1) == 0) {
-        spinClockwise = !spinClockwise;
-      }
-    } else {
-      spinTimer.set(SPIN_INTERVAL);
-    }
-  }
 
   byte displayHue = hueByRole[blinkRole];
   if (isFull) {
@@ -334,10 +379,10 @@ void hiveDisplay() {
       byte displaySaturation;
       long animationPosition = (millis() - fullStartTime) % FULL_PULSE_INTERVAL;//we are this far into the pulse animation
       //are we in the first half or the second half?
-      if (animationPosition < FULL_PULSE_INTERVAL / 2) {//brightened >> saturated
-        displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, saturationTarget, 255);
-      } else {//saturated >> brightened
-        displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, saturationTarget);
+      if (animationPosition < FULL_PULSE_INTERVAL / 2) {//white >> color
+        displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, 0, 255);
+      } else {//color >> white
+        displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, 0);
       }
       setColor(makeColorHSB(displayHue, displaySaturation, 255));
     }
@@ -345,37 +390,76 @@ void hiveDisplay() {
     //I could be evolving here
     if (!evolveTimer.isExpired()) {//I'm evolving. This display takes precedence!
       byte flashState = map_m(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, 255, 0);
-      setColor(makeColorHSB(displayHue, flashState, 255));
+      byte dimState = map_m(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, RESOURCE_DIM, 255);
+      setColor(makeColorHSB(displayHue, flashState, dimState));
     } else {//not evolving, do normal display
       byte fullFaces = resourceCollected / RESOURCE_STACK;//returns 0-6
-      byte displaySaturation = 0;
+      byte displayBrightness = 0;
 
       FOREACH_FACE(f) {
         if (f < fullFaces) {//this face is definitely full
-          displaySaturation = saturationTarget;
+          displayBrightness = 255;
         } else if (f == fullFaces) {//this is the one being worked on now
-          displaySaturation = map_m(resourceCollected % RESOURCE_STACK, 0, RESOURCE_STACK, 255, saturationTarget);
+          displayBrightness = map_m(resourceCollected % RESOURCE_STACK, 0, RESOURCE_STACK, RESOURCE_DIM, 255);
           //displaySaturation = 255 - ((resourceCollected % RESOURCE_STACK) * saturationReduction);
         } else {//this is empty
-          displaySaturation = 255;
+          displayBrightness = RESOURCE_DIM;
         }
 
-        setColorOnFace(makeColorHSB(displayHue, displaySaturation, 255), f);
+        setColorOnFace(makeColorHSB(displayHue, 255, displayBrightness), f);
       }
-
-      //now that we have displayed resources, display the little bee
-      Color beeColor;
-      if (shouldEvolve) {
-        beeColor = makeColorHSB(hueByRole[blinkRole + 1], 255, 255);
-      } else {
-        beeColor = makeColorHSB(hueByRole[blinkRole], targetSaturation, 255);
-      }
-      setColorOnFace(beeColor, spinPosition);
     }
   }
-}
 
-void queenDisplay() {
+  //now that we have displayed the state of the world, display the little bee
+  if (isCelebrating) {//celebration bee spin
+    if (spinTimer.isExpired()) {
+
+      if (spinClockwise) {
+        spinPosition = (spinPosition + 1) % 6;
+      } else {
+        spinPosition = (spinPosition + 5) % 6;
+      }
+
+      long celebrationSpinInterval = map_m(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, SPIN_INTERVAL / 5, SPIN_INTERVAL);
+      celebrationSpinInterval = (celebrationSpinInterval * celebrationSpinInterval) / SPIN_INTERVAL;
+      spinTimer.set(celebrationSpinInterval);
+    }
+
+    Color beeColor = makeColorHSB(hueByRole[QUEEN], 255, 255);
+    setColorOnFace(beeColor, spinPosition);
+
+  } else {//normal bee spin
+    if (spinTimer.isExpired()) {
+
+      if (spinClockwise) {
+        spinPosition = (spinPosition + 1) % 6;
+      } else {
+        spinPosition = (spinPosition + 5) % 6;
+      }
+
+      spinSteps --;
+
+      if (spinSteps == 0) { //should I sit for a second and think about life?
+        spinTimer.set(SPIN_INTERVAL * (random(2) + 2));
+        spinSteps = random(11) + 9;
+        //so now that I'm sitting here, should I change my direction?
+        if (random(1) == 0) {
+          spinClockwise = !spinClockwise;
+        }
+      } else {
+        spinTimer.set(SPIN_INTERVAL);
+      }
+    }
+
+    Color beeColor;
+    if (shouldEvolve) {
+      beeColor = makeColorHSB(hueByRole[blinkRole + 1], 255, 255);
+    } else {
+      beeColor = makeColorHSB(hueByRole[blinkRole], BEE_SATURATION, 255);
+    }
+    setColorOnFace(beeColor, spinPosition);
+  }
 
 }
 
