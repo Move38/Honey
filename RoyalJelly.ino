@@ -1,7 +1,7 @@
 #include "Serial.h"
 ServicePortSerial sp;
 
-enum blinkRoles     {FLOWER,   WORKER,   BROOD,  QUEEN};
+enum blinkRoles {FLOWER,   WORKER,   BROOD,  QUEEN};
 byte blinkRole = FLOWER;
 
 byte blinkNeighbors;
@@ -27,7 +27,7 @@ Timer evolveTimer;
 bool isExporting = false;
 byte exportFace = 0;
 Timer exportTimer;
-#define EXPORT_INTERVAL 500
+#define EXPORT_INTERVAL 1000
 
 ////COMMUNICATION VARIABLES
 enum signalTypes {INERT, SUPPLY, DEMAND, TRADING};
@@ -42,7 +42,7 @@ byte celebrationState = NOMINAL;
 byte hueByRole[5] = {78,       43,       22,     200};
 byte saturationReduction = 10;
 #define BEE_SATURATION 210
-#define RESOURCE_DIM 50
+#define RESOURCE_DIM 100
 
 byte spinPosition = 0;
 byte spinSteps = 7;
@@ -373,26 +373,28 @@ void hiveDisplay() {
 
   byte displayHue = hueByRole[blinkRole];
   if (isFull) {
-    if (isExporting) {//doing the export thing
-
-    } else {//just kinda waiting around
-      byte displaySaturation;
-      long animationPosition = (millis() - fullStartTime) % FULL_PULSE_INTERVAL;//we are this far into the pulse animation
-      //are we in the first half or the second half?
-      if (animationPosition < FULL_PULSE_INTERVAL / 2) {//white >> color
-        displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, 0, 255);
-      } else {//color >> white
-        displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, 0);
-      }
-      setColor(makeColorHSB(displayHue, displaySaturation, 255));
+    //just kinda waiting around
+    byte displaySaturation;
+    long animationPosition = (millis() - fullStartTime) % FULL_PULSE_INTERVAL;//we are this far into the pulse animation
+    //are we in the first half or the second half?
+    if (animationPosition < FULL_PULSE_INTERVAL / 2) {//white >> color
+      displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, 0, 255);
+    } else {//color >> white
+      displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, 0);
     }
+    setColor(makeColorHSB(displayHue, displaySaturation, 255));
   } else {
-    //I could be evolving here
-    if (!evolveTimer.isExpired()) {//I'm evolving. This display takes precedence!
+    if (isExporting) {//doing the export thing
+      FOREACH_FACE(f) {
+        byte brightnessVal = getFaceValueForSendAnimation(exportFace, f, EXPORT_INTERVAL, exportTimer.getRemaining(), RESOURCE_DIM, 255);
+        byte saturationVal = getFaceValueForSendAnimation(exportFace, f, EXPORT_INTERVAL, exportTimer.getRemaining(), 255, 0);
+        setColorOnFace(makeColorHSB(hueByRole[blinkRole], saturationVal, brightnessVal), f);
+      }
+    } else if (!evolveTimer.isExpired()) {//I'm evolving. This display takes precedence!
       byte flashState = map_m(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, 255, 0);
       byte dimState = map_m(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, RESOURCE_DIM, 255);
       setColor(makeColorHSB(displayHue, flashState, dimState));
-    } else {//not evolving, do normal display
+    } else {//not evolving, not exporting, do normal display
       byte fullFaces = resourceCollected / RESOURCE_STACK;//returns 0-6
       byte displayBrightness = 0;
 
@@ -461,6 +463,26 @@ void hiveDisplay() {
     setColorOnFace(beeColor, spinPosition);
   }
 
+}
+
+byte getFaceValueForSendAnimation(byte actionFace, byte f, long duration, long progress, byte low, byte high) {
+  long offset = duration  / 6;
+  byte dist = (actionFace + 6 - f) % 6;
+  byte phase;
+  switch (dist) {
+    case 0: phase = 0; break;
+    case 1: phase = 1; break;
+    case 2: phase = 2; break;
+    case 3: phase = 3; break;
+    case 4: phase = 2; break;
+    case 5: phase = 1; break;
+  }
+  long t0 = (phase * offset) + (duration - (offset * 3));
+  long t1 = (phase * offset);
+  byte value = map_m(progress, t0, t1, high, low);
+  if (progress > t0) value = high;
+  if (progress < t1) value = low;
+  return value;
 }
 
 ///////////////
