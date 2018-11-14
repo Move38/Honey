@@ -12,7 +12,7 @@ bool shouldEvolve = false;
 byte resourceCollected = 0;
 #define RESOURCE_STACK 10
 Timer resourceTimer;
-#define RESOURCE_TICK_INTERVAL 200
+#define RESOURCE_TICK_INTERVAL 167
 
 bool isFull;
 long fullStartTime = 0;
@@ -28,6 +28,10 @@ bool isExporting = false;
 byte exportFace = 0;
 Timer exportTimer;
 #define EXPORT_INTERVAL 1000
+
+bool isImporting = false;
+byte importHold = 0;
+Timer importTimer;
 
 ////COMMUNICATION VARIABLES
 enum signalTypes {INERT, SUPPLY, DEMAND, TRADING};
@@ -288,6 +292,13 @@ void incompleteLoop(byte singleStackImportRole, byte fullResourceImportRole) {
       isExporting = false;
     }
   } else {
+    //resolve imports
+    if (importTimer.isExpired()) {
+      isImporting = false;
+      resourceCollected += importHold;
+      importHold = 0;
+    }
+    //do more imports
     FOREACH_FACE(f) {
       if (isValueReceivedOnFaceExpired(f)) {//just making sure any unoccupied faces go INERT
         tradingSignals[f] = INERT;
@@ -312,10 +323,14 @@ void incompleteLoop(byte singleStackImportRole, byte fullResourceImportRole) {
             //if that neighbor has gone inert, then the trade is COMPLETE
             if (getNeighborTradingSignal(neighborData) == INERT) {
               tradingSignals[f] = INERT;
+              isImporting = true;
+              importTimer.set((EXPORT_INTERVAL * 3) / 4);
               if (getNeighborRole(neighborData) == fullResourceImportRole) {
-                resourceCollected += RESOURCE_STACK * 6;
+                //resourceCollected += RESOURCE_STACK * 6;
+                importHold += RESOURCE_STACK * 6;
               } else if (getNeighborRole(neighborData) == singleStackImportRole) {
-                resourceCollected += RESOURCE_STACK;
+                //resourceCollected += RESOURCE_STACK;
+                importHold += RESOURCE_STACK;
               }
             }
             break;
@@ -431,7 +446,7 @@ void hiveDisplay() {
     Color beeColor = makeColorHSB(hueByRole[QUEEN], 255, 255);
     setColorOnFace(beeColor, spinPosition);
 
-  } else {//normal bee spin
+  } else if (!isFull && !isExporting) { //normal bee spin
     if (spinTimer.isExpired()) {
 
       if (spinClockwise) {
