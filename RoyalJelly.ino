@@ -145,7 +145,7 @@ void loop() {
 
 void flowerLoop() {
   if (isFull) {
-    fullLoop(WORKER, WORKER);
+    fullLoop(WORKER);
   } else {
     if (isExporting) {
       if (exportTimer.isExpired()) {
@@ -176,17 +176,17 @@ void flowerLoop() {
 
 void workerLoop() {
   if (isFull) {
-    fullLoop(BROOD, WORKER);
+    fullLoop(BROOD);
   } else {
-    incompleteLoop(FLOWER, WORKER);
+    incompleteLoop(FLOWER);
   }
 }
 
 void broodLoop() {
   if (isFull) {
-    fullLoop(QUEEN, BROOD);
+    fullLoop(QUEEN);
   } else {
-    incompleteLoop(WORKER, BROOD);
+    incompleteLoop(WORKER);
   }
 }
 
@@ -212,11 +212,11 @@ void queenLoop() {
     isFull = false;
     resourceCollected = 0;
   } else {
-    incompleteLoop(BROOD, QUEEN);
+    incompleteLoop(BROOD);
   }
 }
 
-void fullLoop(byte primaryExportRole, byte secondaryExportRole) {
+void fullLoop(byte primaryExportRole) {
   if (shouldEvolve) {//we are in evolve mode
     blinkRole = primaryExportRole;
     resourceCollected = 0;
@@ -240,12 +240,6 @@ void fullLoop(byte primaryExportRole, byte secondaryExportRole) {
             case INERT://look to see if my neighbor is someone I can offer my resource to
               if (isTouching(primaryExportRole) > 0) {//if I'm touching a my primary export type, always offer to that
                 if (getNeighborRole(neighborData) == primaryExportRole) {
-                  tradingSignals[f] = SUPPLY;
-                } else {//don't accidentally offer stuff to the wrong people
-                  tradingSignals[f] = INERT;
-                }
-              } else {
-                if (getNeighborRole(neighborData) == secondaryExportRole) {
                   tradingSignals[f] = SUPPLY;
                 } else {//don't accidentally offer stuff to the wrong people
                   tradingSignals[f] = INERT;
@@ -280,7 +274,7 @@ void fullLoop(byte primaryExportRole, byte secondaryExportRole) {
   }
 }
 
-void incompleteLoop(byte singleStackImportRole, byte fullResourceImportRole) {
+void incompleteLoop(byte singleStackImportRole) {
   if (isExporting) {
     if (exportTimer.isExpired()) {
       isExporting = false;
@@ -301,7 +295,7 @@ void incompleteLoop(byte singleStackImportRole, byte fullResourceImportRole) {
         switch (tradingSignals[f]) {
           case INERT:// Look for a neighbor who might cause me to go into DEMAND
             //if I have a compatible neighbor in SUPPLY mode, we go to DEMAND
-            if (getNeighborTradingSignal(neighborData) == SUPPLY && (getNeighborRole(neighborData) == singleStackImportRole || getNeighborRole(neighborData) == fullResourceImportRole)) {
+            if (getNeighborTradingSignal(neighborData) == SUPPLY && getNeighborRole(neighborData) == singleStackImportRole) {
               tradingSignals[f] = DEMAND;
             }
             break;
@@ -319,13 +313,7 @@ void incompleteLoop(byte singleStackImportRole, byte fullResourceImportRole) {
               tradingSignals[f] = INERT;
               isImporting = true;
               importTimer.set((EXPORT_INTERVAL * 3) / 4);
-              if (getNeighborRole(neighborData) == fullResourceImportRole) {
-                //resourceCollected += RESOURCE_STACK * 6;
-                importHold += RESOURCE_STACK * 6;
-              } else if (getNeighborRole(neighborData) == singleStackImportRole) {
-                //resourceCollected += RESOURCE_STACK;
-                importHold += RESOURCE_STACK;
-              }
+              importHold += RESOURCE_STACK;
             }
             break;
         }
