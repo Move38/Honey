@@ -72,7 +72,7 @@ void loop() {
   }
 
   //check for flower reversion
-  if (buttonDoubleClicked) {
+  if (buttonDoubleClicked()) {
     if (blinkRole != FLOWER) {
       if (isAlone()) {
         resourceCollected = 0;
