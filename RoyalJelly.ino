@@ -1,6 +1,3 @@
-#include "Serial.h"
-ServicePortSerial sp;
-
 enum blinkRoles {FLOWER,   WORKER,   BROOD,  QUEEN};
 byte blinkRole = FLOWER;
 
@@ -43,7 +40,7 @@ byte celebrationState = NOMINAL;
 ////DISPLAY VARIABLES
 byte hueByRole[5] = {78,       43,       22,     200};
 byte saturationReduction = 10;
-#define BEE_SATURATION 150
+#define BEE_SATURATION 128
 #define RESOURCE_DIM 100
 
 byte spinPosition = 0;
@@ -62,7 +59,6 @@ Timer celebrationTimer;
 
 void setup() {
   // put your setup code here, to run once:
-  sp.begin();
 }
 
 void loop() {
@@ -72,6 +68,20 @@ void loop() {
       shouldEvolve = false;
     } else {
       shouldEvolve = true;
+    }
+  }
+
+  //check for flower reversion
+  if (buttonDoubleClicked) {
+    if (blinkRole != FLOWER) {
+      if (isAlone()) {
+        resourceCollected = 0;
+        isFull = false;
+        isLagging = false;
+        evolveTimer.set(1000);
+        shouldEvolve = false;
+        blinkRole = FLOWER;
+      }
     }
   }
 
