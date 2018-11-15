@@ -5,14 +5,13 @@ enum blinkRoles {FLOWER,   WORKER,   BROOD,  QUEEN};
 byte blinkRole = FLOWER;
 
 byte blinkNeighbors;
-bool neighborLayout[6];
 bool shouldEvolve = false;
 
 ////RESOURCE VARIABLES
 byte resourceCollected = 0;
 #define RESOURCE_STACK 10
 Timer resourceTimer;
-#define RESOURCE_TICK_INTERVAL 167
+#define RESOURCE_TICK_INTERVAL 83
 
 bool isFull;
 long fullStartTime = 0;
@@ -41,11 +40,10 @@ bool isTrading = false;
 enum celebrationStates {NOMINAL, HOORAY, RESOLVING};
 byte celebrationState = NOMINAL;
 
-
 ////DISPLAY VARIABLES
 byte hueByRole[5] = {78,       43,       22,     200};
 byte saturationReduction = 10;
-#define BEE_SATURATION 210
+#define BEE_SATURATION 150
 #define RESOURCE_DIM 100
 
 byte spinPosition = 0;
@@ -101,13 +99,6 @@ void loop() {
       break;
   }
 
-  //DEBUG CELEBRATION
-  if (buttonDoubleClicked()) {
-    isCelebrating = true;
-    celebrationTimer.set(CELEBRATION_INTERVAL);
-    celebrationState = HOORAY;
-  }
-
   //resolve celebration state
   if (celebrationState == NOMINAL) {
     FOREACH_FACE(f) {
@@ -156,26 +147,29 @@ void flowerLoop() {
   if (isFull) {
     fullLoop(WORKER, WORKER);
   } else {
-    if (exportTimer.isExpired()) {
-      isExporting = false;
-    }
+    if (isExporting) {
+      if (exportTimer.isExpired()) {
+        isExporting = false;
+      }
+    } else {
 
-    //auto increment if I'm touching a worker
-    if (isTouching(WORKER)) {
-      autoResource();
-    }
+      //auto-increment
+      if (isTouching(WORKER) > 0) {
+        autoResource(RESOURCE_TICK_INTERVAL / isTouching(WORKER)); //gets faster with more workers
+      }
 
-    //increment in large chunks if clicked
-    if (buttonPressed()) {
-      resourceCollected += RESOURCE_STACK;
-    }
+      //increment in large chunks if clicked
+      if (buttonPressed()) {
+        resourceCollected += RESOURCE_STACK;
+      }
 
-    //check fullness
-    if (resourceCollected >= RESOURCE_STACK * 6) {
-      isFull = true;
-      fullStartTime = millis();
-      isLagging = true;
-      lagTimer.set(RESOURCE_FULL_LAG);
+      //check fullness
+      if (resourceCollected >= RESOURCE_STACK * 6) {
+        isFull = true;
+        fullStartTime = millis();
+        isLagging = true;
+        lagTimer.set(RESOURCE_FULL_LAG);
+      }
     }
   }
 }
@@ -244,7 +238,7 @@ void fullLoop(byte primaryExportRole, byte secondaryExportRole) {
           byte tradeFace = 6;
           switch (tradingSignals[f]) {
             case INERT://look to see if my neighbor is someone I can offer my resource to
-              if (isTouching(primaryExportRole)) {//if I'm touching a my primary export type, always offer to that
+              if (isTouching(primaryExportRole) > 0) {//if I'm touching a my primary export type, always offer to that
                 if (getNeighborRole(neighborData) == primaryExportRole) {
                   tradingSignals[f] = SUPPLY;
                 } else {//don't accidentally offer stuff to the wrong people
@@ -347,21 +341,21 @@ void incompleteLoop(byte singleStackImportRole, byte fullResourceImportRole) {
   }
 }
 
-void autoResource() {
+void autoResource(int interval) {
   if (resourceTimer.isExpired()) {
     //tick the resource
     resourceCollected++;
     //reset the timer
-    resourceTimer.set(RESOURCE_TICK_INTERVAL);
+    resourceTimer.set(interval);
   }
 }
 
-bool isTouching(byte roleType) {
-  bool touchCheck = false;
+byte  isTouching(byte roleType) {
+  byte touchCheck = 0;
   FOREACH_FACE(f) {
     if (!isValueReceivedOnFaceExpired(f)) { //something here
       if (getNeighborRole(getLastValueReceivedOnFace(f)) == roleType) {
-        touchCheck = true;
+        touchCheck++;
       }
     }
   }
