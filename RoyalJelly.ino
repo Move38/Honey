@@ -215,12 +215,14 @@ void queenLoop() {
   shouldEvolve = false;
 
   if (isFull) {
-    //The first time we run this loop, we become not full immediately
-    isCelebrating = true;
-    celebrationTimer.set(CELEBRATION_INTERVAL);
-    celebrationState = HOORAY;
-    isFull = false;
-    resourceCollected = 0;
+    //we do the lagging animation as usual here, then check if we are done
+    if (lagTimer.isExpired()) {
+      isCelebrating = true;
+      celebrationTimer.set(CELEBRATION_INTERVAL);
+      celebrationState = HOORAY;
+      isFull = false;
+      resourceCollected = 0;
+    }
   } else {
     incompleteLoop(BROOD);
   }
@@ -422,6 +424,12 @@ void hiveDisplay() {
 
   //now that we have displayed the state of the world, display the little bee
   if (isCelebrating) {//celebration bee spin
+    //do the special queen celebration
+    if (blinkRole == QUEEN) {
+      byte brightnessVal = map_m(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, RESOURCE_DIM, 255);
+      setColor(makeColorHSB(hueByRole[QUEEN], brightnessVal, saturationVal));
+    }
+
     if (spinTimer.isExpired()) {
 
       if (spinClockwise) {
@@ -438,7 +446,7 @@ void hiveDisplay() {
     Color beeColor = makeColorHSB(hueByRole[QUEEN], 255, 255);
     setColorOnFace(beeColor, spinPosition);
 
-  } else if (!isFull && !isExporting) { //normal bee spin
+  } else if (!isFull && !isExporting && blinkRole != QUEEN) { //normal bee spin, absent on queens
     if (spinTimer.isExpired()) {
 
       if (spinClockwise) {
