@@ -6,7 +6,7 @@ bool shouldEvolve = false;
 
 ////RESOURCE VARIABLES
 byte resourceCollected = 0;
-#define RESOURCE_STACK 10
+#define RESOURCE_STACK 6
 Timer resourceTimer;
 #define RESOURCE_TICK_INTERVAL 83
 
@@ -14,7 +14,7 @@ bool isFull;
 long fullStartTime = 0;
 bool isLagging;
 Timer lagTimer;
-#define RESOURCE_FULL_LAG 2000
+#define RESOURCE_FULL_LAG 1500
 #define FULL_PULSE_INTERVAL 1000
 
 Timer evolveTimer;
@@ -41,6 +41,7 @@ byte celebrationState = NOMINAL;
 byte hueByRole[5] = {78,       43,       22,     200};
 byte saturationReduction = 10;
 #define BEE_SATURATION 128
+#define FULL_SATURATION 170
 #define RESOURCE_DIM 100
 
 byte spinPosition = 0;
@@ -387,16 +388,16 @@ void hiveDisplay() {
     long animationPosition = (millis() - fullStartTime) % FULL_PULSE_INTERVAL;//we are this far into the pulse animation
     //are we in the first half or the second half?
     if (animationPosition < FULL_PULSE_INTERVAL / 2) {//white >> color
-      displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, 0, 255);
+      displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
     } else {//color >> white
-      displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, 0);
+      displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, FULL_SATURATION);
     }
     setColor(makeColorHSB(displayHue, displaySaturation, 255));
   } else {
     if (isExporting) {//doing the export thing
       FOREACH_FACE(f) {
         byte brightnessVal = getFaceValueForSendAnimation(exportFace, f, EXPORT_INTERVAL, exportTimer.getRemaining(), RESOURCE_DIM, 255);
-        byte saturationVal = getFaceValueForSendAnimation(exportFace, f, EXPORT_INTERVAL, exportTimer.getRemaining(), 255, 0);
+        byte saturationVal = getFaceValueForSendAnimation(exportFace, f, EXPORT_INTERVAL, exportTimer.getRemaining(), 255, FULL_SATURATION);
         setColorOnFace(makeColorHSB(hueByRole[blinkRole], saturationVal, brightnessVal), f);
       }
     } else if (!evolveTimer.isExpired()) {//I'm evolving. This display takes precedence!
@@ -427,6 +428,7 @@ void hiveDisplay() {
     //do the special queen celebration
     if (blinkRole == QUEEN) {
       byte brightnessVal = map_m(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, RESOURCE_DIM, 255);
+      byte saturationVal = map_m(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, 255, 0);
       setColor(makeColorHSB(hueByRole[QUEEN], brightnessVal, saturationVal));
     }
 
