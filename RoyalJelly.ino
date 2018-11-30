@@ -324,7 +324,12 @@ void incompleteLoop(byte singleStackImportRole) {
       isFull = true;
       fullStartTime = millis();
       isLagging = true;
-      lagTimer.set(RESOURCE_FULL_LAG);
+      if (blinkRole == QUEEN) {
+        lagTimer.set(RESOURCE_FULL_LAG * 2);
+      } else {
+        lagTimer.set(RESOURCE_FULL_LAG);
+      }
+
     }
   }
 }
@@ -447,10 +452,10 @@ void hiveDisplay() {
       spinSteps --;
 
       if (spinSteps == 0) { //should I sit for a second and think about life?
-        spinTimer.set(SPIN_INTERVAL * (random(2) + 2));
+        spinTimer.set(SPIN_INTERVAL * 3);
         spinSteps = random(11) + 9;
         //so now that I'm sitting here, should I change my direction?
-        if (random(1) == 0) {
+        if (random(2) > 0) {
           spinClockwise = !spinClockwise;
         }
       } else {
