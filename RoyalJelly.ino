@@ -202,19 +202,6 @@ void broodLoop() {
 }
 
 void queenLoop() {
-  //first, deal with the tricky business of evolving
-  if (isAlone()) {
-    if (shouldEvolve) {
-      blinkRole = FLOWER;
-      resourceCollected = 0;
-      isFull = false;
-      isLagging = false;
-      evolveTimer.set(1000);
-      shouldEvolve = false;
-    }
-  }
-  shouldEvolve = false;
-
   if (isFull) {
     //we do the lagging animation as usual here, then check if we are done
     if (lagTimer.isExpired()) {
