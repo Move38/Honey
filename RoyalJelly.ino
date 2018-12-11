@@ -38,7 +38,7 @@ enum celebrationStates {NOMINAL, HOORAY, RESOLVING};
 byte celebrationState = NOMINAL;
 
 ////DISPLAY VARIABLES
-byte hueByRole[5] = {78,       43,       22,     200};
+byte hueByRole[4] = {78,       43,       22,     200};
 byte saturationReduction = 10;
 #define BEE_SATURATION 128
 #define FULL_SATURATION 170
