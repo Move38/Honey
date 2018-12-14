@@ -312,7 +312,7 @@ void incompleteLoop(byte singleStackImportRole) {
             if (getNeighborTradingSignal(neighborData) == INERT) {
               tradingSignals[f] = INERT;
               isImporting = true;
-              importTimer.set((EXPORT_INTERVAL * 3) / 4);
+              importTimer.set(EXPORT_INTERVAL);
               importHold += RESOURCE_STACK;
             }
             break;
