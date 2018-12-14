@@ -25,9 +25,9 @@ byte exportFace = 0;
 Timer exportTimer;
 #define EXPORT_INTERVAL 1000
 
-bool isImporting = false;
 byte importHold = 0;
 Timer importTimer;
+Timer fadeUpTimer;
 
 ////COMMUNICATION VARIABLES
 enum signalTypes {INERT, SUPPLY, DEMAND, TRADING};
@@ -282,9 +282,13 @@ void incompleteLoop(byte singleStackImportRole) {
   } else {
     //resolve imports
     if (importTimer.isExpired()) {
-      isImporting = false;
-      resourceCollected += importHold;
-      importHold = 0;
+      if (importHold > 0) {
+        if (fadeUpTimer.isExpired()) {
+          fadeUpTimer.set(50);
+          resourceCollected++;
+          importHold--;
+        }
+      }
     }
     //do more imports
     FOREACH_FACE(f) {
@@ -311,7 +315,6 @@ void incompleteLoop(byte singleStackImportRole) {
             //if that neighbor has gone inert, then the trade is COMPLETE
             if (getNeighborTradingSignal(neighborData) == INERT) {
               tradingSignals[f] = INERT;
-              isImporting = true;
               importTimer.set(EXPORT_INTERVAL);
               importHold += RESOURCE_STACK;
             }
