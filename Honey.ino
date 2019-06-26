@@ -494,7 +494,7 @@ byte getFaceValueForSendAnimation(byte actionFace, byte f, long duration, long p
   }
   word t0 = (phase * offset) + (duration - (offset * 3));
   word t1 = (phase * offset);
-  byte value = map(progress, t1, t0, low, high);
+  byte value = map(progress, t0, t1, low, high);
   if (progress > t0) value = high;
   if (progress < t1) value = low;
   return value;
