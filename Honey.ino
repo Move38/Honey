@@ -388,7 +388,7 @@ void hiveDisplay() {
     if (animationPosition < FULL_PULSE_INTERVAL / 2) {//white >> color
       displaySaturation = map(animationPosition, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
     } else {//color >> white
-      displaySaturation = 255 - map(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
+      displaySaturation = 255 - map(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 0, 255 - FULL_SATURATION);
     }
     setColor(makeColorHSB(displayHue, displaySaturation, 255));
   } else {
