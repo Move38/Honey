@@ -383,9 +383,9 @@ void hiveDisplay() {
     long animationPosition = (millis() - fullStartTime) % FULL_PULSE_INTERVAL;//we are this far into the pulse animation
     //are we in the first half or the second half?
     if (animationPosition < FULL_PULSE_INTERVAL / 2) {//white >> color
-      displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
+      displaySaturation = map(animationPosition, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
     } else {//color >> white
-      displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, FULL_SATURATION);
+      displaySaturation = 255 - map(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
     }
     setColor(makeColorHSB(displayHue, displaySaturation, 255));
   } else {
@@ -396,8 +396,8 @@ void hiveDisplay() {
         setColorOnFace(makeColorHSB(hueByRole[blinkRole], saturationVal, brightnessVal), f);
       }
     } else if (!evolveTimer.isExpired()) {//I'm evolving. This display takes precedence!
-      byte flashState = map_m(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, 255, 0);
-      byte dimState = map_m(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, RESOURCE_DIM, 255);
+      byte flashState = 255 - map(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, 0, 255);
+      byte dimState = map(evolveTimer.getRemaining(), 0, EVOLVE_INTERVAL, RESOURCE_DIM, 255);
       setColor(makeColorHSB(displayHue, flashState, dimState));
     } else {//not evolving, not exporting, do normal display
       byte fullFaces = resourceCollected / RESOURCE_STACK;//returns 0-6
@@ -407,7 +407,7 @@ void hiveDisplay() {
         if (f < fullFaces) {//this face is definitely full
           displayBrightness = 255;
         } else if (f == fullFaces) {//this is the one being worked on now
-          displayBrightness = map_m(resourceCollected % RESOURCE_STACK, 0, RESOURCE_STACK, RESOURCE_DIM, 255);
+          displayBrightness = map(resourceCollected % RESOURCE_STACK, 0, RESOURCE_STACK, RESOURCE_DIM, 255);
           //displaySaturation = 255 - ((resourceCollected % RESOURCE_STACK) * saturationReduction);
         } else {//this is empty
           displayBrightness = RESOURCE_DIM;
@@ -422,8 +422,8 @@ void hiveDisplay() {
   if (isCelebrating) {//celebration bee spin
     //do the special queen celebration
     if (blinkRole == QUEEN) {
-      byte brightnessVal = map_m(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, RESOURCE_DIM, 255);
-      byte saturationVal = map_m(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, 255, 0);
+      byte brightnessVal = map(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, RESOURCE_DIM, 255);
+      byte saturationVal = map(celebrationTimer.getRemaining(), 0, CELEBRATION_INTERVAL, 0, 255);
       setColor(makeColorHSB(hueByRole[QUEEN], brightnessVal, saturationVal));
     }
 
@@ -435,7 +435,7 @@ void hiveDisplay() {
         spinPosition = (spinPosition + 5) % 6;
       }
 
-      long celebrationSpinInterval = map_m(celebrationTimer.getRemaining(), CELEBRATION_INTERVAL, 0, SPIN_INTERVAL / 5, SPIN_INTERVAL);
+      long celebrationSpinInterval = map(CELEBRATION_INTERVAL - celebrationTimer.getRemaining(), 0, CELEBRATION_INTERVAL, SPIN_INTERVAL / 5, SPIN_INTERVAL);
       celebrationSpinInterval = (celebrationSpinInterval * celebrationSpinInterval) / SPIN_INTERVAL;
       spinTimer.set(celebrationSpinInterval);
     }
@@ -489,9 +489,9 @@ byte getFaceValueForSendAnimation(byte actionFace, byte f, long duration, long p
     case 4: phase = 2; break;
     case 5: phase = 1; break;
   }
-  long t0 = (phase * offset) + (duration - (offset * 3));
-  long t1 = (phase * offset);
-  byte value = map_m(progress, t0, t1, high, low);
+  word t0 = (phase * offset) + (duration - (offset * 3));
+  word t1 = (phase * offset);
+  byte value = map(progress, t1, t0, low, high);
   if (progress > t0) value = high;
   if (progress < t1) value = low;
   return value;
@@ -515,9 +515,4 @@ byte nextCounterclockwise (byte face) {
   } else {
     return face - 1;
   }
-}
-
-long map_m(long x, long in_min, long in_max, long out_min, long out_max)
-{
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
