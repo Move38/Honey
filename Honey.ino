@@ -1,20 +1,20 @@
 /*
- *  Honey
- *  by Move38, Inc. 2019
- *  Lead development by Dan King
- *  original game by Junege Hong, Dan King, Jonathan Bobrow
- *
- *  Rules: https://github.com/Move38/Honey/blob/master/README.md
- *
- *  --------------------
- *  Blinks by Move38
- *  Brought to life via Kickstarter 2018
- *
- *  @madewithblinks
- *  www.move38.com
- *  --------------------
- */
- 
+    Honey
+    by Move38, Inc. 2019
+    Lead development by Dan King
+    original game by Junege Hong, Dan King, Jonathan Bobrow
+
+    Rules: https://github.com/Move38/Honey/blob/master/README.md
+
+    --------------------
+    Blinks by Move38
+    Brought to life via Kickstarter 2018
+
+    @madewithblinks
+    www.move38.com
+    --------------------
+*/
+
 enum blinkRoles {FLOWER,   WORKER,   BROOD,  QUEEN};
 byte blinkRole = FLOWER;
 
@@ -71,6 +71,8 @@ bool isCelebrating = false;
 Timer celebrationTimer;
 #define CELEBRATION_INTERVAL 4000
 
+bool bPress = false;
+
 /////////
 //LOOPS//
 /////////
@@ -81,25 +83,29 @@ void setup() {
 
 void loop() {
   //change role when ready?
+
+  if (hasWoken()) {
+    bPress = false;
+  }
+
   if (buttonLongPressed()) {
-    if (shouldEvolve) {
-      shouldEvolve = false;
-    } else {
-      shouldEvolve = true;
-    }
+    bPress = true;
+  }
+
+  if (buttonReleased() && bPress) {
+    toggleShouldEvolve();
+    bPress = false;
   }
 
   //check for flower reversion
   if (buttonDoubleClicked()) {
-    if (blinkRole != FLOWER) {
-      if (isAlone()) {
-        resourceCollected = 0;
-        isFull = false;
-        isLagging = false;
-        evolveTimer.set(1000);
-        shouldEvolve = false;
-        blinkRole = FLOWER;
-      }
+    if (isAlone()) {
+      resourceCollected = 0;
+      isFull = false;
+      isLagging = false;
+      evolveTimer.set(1000);
+      shouldEvolve = false;
+      blinkRole = FLOWER;
     }
   }
 
@@ -135,7 +141,7 @@ void loop() {
           isCelebrating = true;
           celebrationTimer.set(CELEBRATION_INTERVAL);
           celebrationState = HOORAY;
-          if(blinkRole != QUEEN){
+          if (blinkRole != QUEEN) {
             resourceCollected = 0;
           }
         }
@@ -172,6 +178,14 @@ void loop() {
   }
 
   hiveDisplay();
+}
+
+void toggleShouldEvolve() {
+  if (shouldEvolve) {
+    shouldEvolve = false;
+  } else {
+    shouldEvolve = true;
+  }
 }
 
 void flowerLoop() {
