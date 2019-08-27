@@ -403,9 +403,9 @@ void hiveDisplay() {
     long animationPosition = (millis() - fullStartTime) % FULL_PULSE_INTERVAL;//we are this far into the pulse animation
     //are we in the first half or the second half?
     if (animationPosition < FULL_PULSE_INTERVAL / 2) {//white >> color
-      displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
+      displaySaturation = map_m(animationPosition, 0, FULL_PULSE_INTERVAL / 2, 255, FULL_SATURATION);
     } else {//color >> white
-      displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, 255, FULL_SATURATION);
+      displaySaturation = map_m(animationPosition - FULL_PULSE_INTERVAL / 2, 0, FULL_PULSE_INTERVAL / 2, FULL_SATURATION, 255);
     }
     setColor(makeColorHSB(displayHue, displaySaturation, 255));
   } else {
