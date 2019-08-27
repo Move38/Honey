@@ -135,6 +135,9 @@ void loop() {
           isCelebrating = true;
           celebrationTimer.set(CELEBRATION_INTERVAL);
           celebrationState = HOORAY;
+          if(blinkRole != QUEEN){
+            resourceCollected = 0;
+          }
         }
       }
     }
