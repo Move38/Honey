@@ -501,7 +501,7 @@ void hiveDisplay() {
     }
 
     Color beeColor;
-    if (shouldEvolve) {
+    if (shouldEvolve != bPress) {
       beeColor = makeColorHSB(hueByRole[blinkRole + 1], 255, 255);
     } else {
       beeColor = makeColorHSB(hueByRole[blinkRole], BEE_SATURATION, 255);
