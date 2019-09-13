@@ -291,7 +291,7 @@ void fullLoop(byte primaryExportRole) {
             case TRADING://so now I look for my trading neighbor to go to TRADING, so I can complete the trade and go to INERT
               if (getNeighborTradingSignal(neighborData) == TRADING) {//alright, a trade is happening
                 tradingSignals[f] = INERT;
-                resourceCollected -= RESOURCE_STACK * 6;
+                resourceCollected = 0;
                 isFull = false;
                 isExporting = true;
                 exportTimer.set(EXPORT_INTERVAL);
@@ -500,15 +500,20 @@ void hiveDisplay() {
       }
     }
 
+    //display the little bee
     Color beeColor;
-    if (shouldEvolve != bPress) {
+    if (shouldEvolve) {
       beeColor = makeColorHSB(hueByRole[blinkRole + 1], 255, 255);
     } else {
       beeColor = makeColorHSB(hueByRole[blinkRole], BEE_SATURATION, 255);
     }
     setColorOnFace(beeColor, spinPosition);
+
   }
 
+  if (bPress) {
+    setColor(WHITE);
+  }
 }
 
 byte getFaceValueForSendAnimation(byte actionFace, byte f, long duration, long progress, byte low, byte high) {
