@@ -100,6 +100,7 @@ void loop() {
   //check for flower reversion
   if (buttonDoubleClicked()) {
     if (isAlone()) {
+      buttonPressed();  // NOTE: This is sloppy, it allows the flower to dismiss the first pressed event caused at the same time as the double click.
       resourceCollected = 0;
       isFull = false;
       isLagging = false;
@@ -178,6 +179,9 @@ void loop() {
   }
 
   hiveDisplay();
+
+  // dump button presses
+  buttonPressed();
 }
 
 void toggleShouldEvolve() {
